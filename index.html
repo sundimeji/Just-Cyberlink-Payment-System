@@ -344,7 +344,7 @@
                 <div class="row-form">
                     <div class="form-group">
                         <label class="form-label" for="customerPhone">Phone Number *</label>
-                        <input type="tel" id="customerPhone" class="form-control" required placeholder="08012345678">
+                        <input type="tel" id="customerPhone" class="form-control" required placeholder="08012345678" onblur="lookupCustomerByPhone()">
                     </div>
                     <div class="form-group">
                         <label class="form-label" for="plazaSelect">Plaza Name *</label>
@@ -709,6 +709,70 @@
             );
 
             setTimeout(() => alertDiv.remove(), 5000);
+        }
+
+        function normalizePhone(value) {
+            return (value || '').replace(/\D/g, '');
+        }
+
+        async function lookupCustomerByPhone() {
+            const phoneValue = document.getElementById('customerPhone').value.trim();
+            if (!phoneValue) return;
+
+            const normalized = normalizePhone(phoneValue);
+            let customer = plazas.flatMap(plaza =>
+                plaza.customers.map(c => ({
+                    ...c,
+                    plazaId: plaza.id,
+                    plazaName: plaza.name
+                }))
+            ).find(c => normalizePhone(c.phone) === normalized);
+
+            if (!customer) {
+                try {
+                    const { data, error } = await supabaseClient
+                        .from('customers')
+                        .select('id, plaza_id, name, shop_number, phone, plan, plaza(name)')
+                        .eq('phone', phoneValue)
+                        .maybeSingle();
+
+                    if (error) throw error;
+                    if (data) {
+                        customer = {
+                            id: data.id,
+                            name: data.name,
+                            shopNumber: data.shop_number,
+                            phone: data.phone,
+                            plan: data.plan,
+                            plazaId: data.plaza_id,
+                            plazaName: data.plaza?.name || ''
+                        };
+                    }
+                } catch (err) {
+                    console.error('Phone lookup error', err);
+                }
+            }
+
+            if (customer) {
+                fillCustomerDetails(customer);
+                showAlert(`Customer found: ${customer.name}`, 'success');
+            } else {
+                showAlert('Customer not found. Please complete the form manually.', 'warning');
+            }
+        }
+
+        function fillCustomerDetails(customer) {
+            document.getElementById('customerName').value = customer.name || '';
+            document.getElementById('shopNumber').value = customer.shopNumber || '';
+            document.getElementById('customerPhone').value = customer.phone || '';
+
+            if (customer.plazaId) {
+                document.getElementById('plazaSelect').value = customer.plazaId;
+                updateCustomerList();
+
+                const customerSelect = document.getElementById('customerSelect');
+                customerSelect.value = customer.id;
+            }
         }
     </script>
 </body>
